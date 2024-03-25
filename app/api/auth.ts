@@ -2,6 +2,37 @@ import { NextRequest } from "next/server";
 import { getServerSideConfig } from "../config/server";
 import md5 from "spark-md5";
 import { ACCESS_CODE_PREFIX, ModelProvider } from "../constant";
+import CryptoJS from "crypto-js";
+
+function decrypt(base64String: string) {
+  try {
+    base64String = aesDecrypt(base64String);
+    // 用base64进行一个解密
+    let byteArray = Buffer.from(base64String, "base64");
+    // 高低位互换
+    const byteArrayExpire = Buffer.from([...byteArray].reverse());
+    // 转成Long
+    let expireTime = Number(byteArrayExpire.readBigInt64BE());
+    return new Date(expireTime * 1000);
+  } catch (e) {
+    console.error(e);
+    return new Date(0);
+  }
+}
+
+function aesDecrypt(encrypted: string) {
+  const key = "nY1Df+xsP0OTasFH";
+  const decoded = CryptoJS.enc.Base64.parse(encrypted);
+  const iv = CryptoJS.lib.WordArray.create(decoded.words.slice(0, 4)); // the first 16 bytes are the IV
+  const encrypted_data = CryptoJS.lib.WordArray.create(decoded.words.slice(4)); // the rest is the encrypted data
+  const cipher = CryptoJS.AES.decrypt(
+    { ciphertext: encrypted_data },
+    CryptoJS.enc.Utf8.parse(key),
+    { iv: iv, mode: CryptoJS.mode.CBC, padding: CryptoJS.pad.Pkcs7 },
+  );
+  const decrypted = cipher.toString(CryptoJS.enc.Utf8);
+  return decrypted;
+}
 
 function getIP(req: NextRequest) {
   let ip = req.ip ?? req.headers.get("x-real-ip");
@@ -39,11 +70,15 @@ export function auth(req: NextRequest, modelProvider: ModelProvider) {
   console.log("[User IP] ", getIP(req));
   console.log("[Time] ", new Date().toLocaleString());
 
-  if (serverConfig.needCode && !serverConfig.codes.has(hashedCode) && !apiKey) {
-    return {
-      error: true,
-      msg: !accessCode ? "empty access code" : "wrong access code",
-    };
+  if (!apiKey && accessCode) {
+    const expireTime = decrypt(accessCode);
+    console.log("[Auth] expire time: ", expireTime.toLocaleString());
+    if (expireTime < new Date()) {
+      return {
+        error: true,
+        msg: "access code expired",
+      };
+    }
   }
 
   if (serverConfig.hideUserApiKey && !!apiKey) {
