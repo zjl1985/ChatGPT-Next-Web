@@ -26,10 +26,14 @@ function aesDecrypt(encrypted: string) {
   const iv = CryptoJS.lib.WordArray.create(decoded.words.slice(0, 4)); // the first 16 bytes are the IV
   const encrypted_data = CryptoJS.lib.WordArray.create(decoded.words.slice(4)); // the rest is the encrypted data
   const cipher = CryptoJS.AES.decrypt(
-    { ciphertext: encrypted_data },
+    encrypted_data.toString(CryptoJS.enc.Base64),
     CryptoJS.enc.Utf8.parse(key),
-    { iv: iv, mode: CryptoJS.mode.CBC, padding: CryptoJS.pad.Pkcs7 },
-  );
+    {
+      iv: iv,
+      mode: CryptoJS.mode.CBC,
+      padding: CryptoJS.pad.Pkcs7,
+    },
+  ); // eslint-disable-line
   const decrypted = cipher.toString(CryptoJS.enc.Utf8);
   return decrypted;
 }
